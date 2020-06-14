@@ -1,0 +1,71 @@
+version: "3.8"
+services:
+  traefik:
+    # The official v2 Traefik docker image
+    image: traefik:v2.2
+    # Enables the web UI and tells Traefik to listen to docker
+    command: --api.insecure=true --providers.docker
+    ports:
+    # The HTTP port
+    - "80:80"
+    # The Web UI (enabled by --api.insecure=true)
+    - "8080:8080"
+    volumes:
+    # So that Traefik can listen to the Docker events
+    - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+    - monitoring
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    restart: always
+    labels:
+    - "traefik.http.routers.grafana.rule=Host(`grafana.awoo`)"
+    - "traefik.http.services.grafana.loadbalancer.healthcheck.path=/api/health"
+    networks:
+    - monitoring
+    volumes:
+    - grafana-volume:/vol01/Docker/monitoring
+  influxdb:
+    image: influxdb
+    container_name: influxdb
+    restart: always
+    ports:
+    - 8086:8086
+    networks:
+    - monitoring
+    volumes:
+    - influxdb-volume:/vol01/Docker/monitoring
+    environment:
+      INFLUXDB_DB: telegraf
+      INFLUXDB_USER: telegraf
+
+      INFLUXDB_ADMIN_ENABLED: "true"
+      INFLUXDB_ADMIN_USER: admin
+      INFLUXDB_ADMIN_PASSWORD_FILE: /run/secrets/grafana_admin_password
+    secrets:
+    - grafana_admin_password
+  telegraf:
+    image: telegraf
+    container_name: telegraf
+    restart: always
+    environment:
+      HOST_PROC: /rootfs/proc
+      HOST_SYS: /rootfs/sys
+      HOST_ETC: /rootfs/etc
+    volumes:
+     - ./telegraf.conf:/etc/telegraf/telegraf.conf:ro
+     - /var/run/docker.sock:/var/run/docker.sock:ro
+     - /sys:/rootfs/sys:ro
+     - /proc:/rootfs/proc:ro
+     - /etc:/rootfs/etc:ro
+networks:
+  monitoring:
+volumes:
+  grafana-volume:
+    external: true
+  influxdb-volume:
+    external: true
+secrets:
+  grafana_admin_password:
+    file: .secrets/grafana_admin_password.txt
